@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1f3864">
+<meta name="theme-color" content="#f5f7fa">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
-<title>真田打卡</title>
+<title>店面打卡系統</title>
 <style>
-  :root { --bg:#f4f5f7; --card:#fff; --text:#1d1d1f; --muted:#6b7280; --accent:#1f3864;
-          --ok:#16a34a; --err:#dc2626; --warn:#b45309; --line:#d1d5db; --key:#fff7d6; }
+  :root { --bg:#f5f7fa; --card:#ffffff; --text:#1f2933; --muted:#8a94a3; --accent:#2b8fd6; --accent-soft:#e8f3fc;
+          --ok:#1f9d6b; --err:#d64545; --warn:#c27c0e; --line:#e3e8ef; --key:#fff8e1; --field:#ffffff; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#111317; --card:#1c1f26; --text:#f3f4f6; --muted:#9ca3af; --accent:#5b8def;
-            --ok:#22c55e; --err:#f87171; --warn:#fbbf24; --line:#374151; --key:#3a3215; }
+    :root { --bg:#10151b; --card:#1a2129; --text:#eef2f6; --muted:#8f9aa8; --accent:#4aa8ec; --accent-soft:#1c3346;
+            --ok:#3ccf91; --err:#f07a7a; --warn:#f2b84b; --line:#2c3642; --key:#3a3215; --field:#141a21; }
   }
   * { box-sizing:border-box; }
   html, body { height:100%; }
@@ -22,26 +22,26 @@
          padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0); }
   .wrap { display:flex; flex-direction:column; align-items:center; gap:18px; padding:16px 0; }
   .logo { max-width:min(60vw,260px); max-height:110px; object-fit:contain; }
-  .card { background:var(--card); width:min(92vw,440px); padding:26px 22px; border-radius:20px;
-          box-shadow:0 6px 24px rgba(0,0,0,.12); text-align:center; }
+  .card { background:var(--card); width:min(92vw,440px); padding:26px 22px; border-radius:22px;
+          box-shadow:0 2px 14px rgba(20,50,90,.06); border:1px solid var(--line); text-align:center; }
   [hidden] { display:none !important; }
-  .store { font-size:22px; font-weight:700; }
+  .store { font-size:22px; font-weight:700; color:var(--accent); }
   .device { font-size:13px; color:var(--muted); margin-top:2px; }
-  .clock { font-size:46px; font-weight:700; letter-spacing:2px; margin:6px 0 16px; font-variant-numeric:tabular-nums; }
-  input { font-size:22px; padding:12px; border:3px solid var(--line); border-radius:14px;
-          background:var(--bg); color:var(--text); outline:none; text-align:center; width:100%; }
-  input:focus { border-color:var(--accent); }
+  .clock { font-size:46px; font-weight:600; letter-spacing:2px; margin:6px 0 16px; font-variant-numeric:tabular-nums; color:var(--text); }
+  input { font-size:22px; padding:12px; border:2px solid var(--line); border-radius:16px;
+          background:var(--field); color:var(--text); outline:none; text-align:center; width:100%; }
+  input:focus { border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
   #code { width:120px; height:120px; font-size:72px; padding:0; text-transform:uppercase; }
   .name { height:40px; margin:14px 0; font-size:28px; font-weight:700; }
   .name.err { color:var(--err); font-size:20px; }
-  button { width:100%; height:70px; font-size:28px; font-weight:700; border:0; border-radius:16px;
-           background:var(--accent); color:#fff; }
-  button:disabled { opacity:.35; }
+  button { width:100%; height:68px; font-size:26px; font-weight:700; border:0; border-radius:16px;
+           background:var(--accent); color:#fff; letter-spacing:4px; }
+  button:disabled { background:var(--accent-soft); color:var(--muted); }
   .msg { min-height:52px; margin-top:14px; font-size:19px; font-weight:700; }
   .ok { color:var(--ok); } .err { color:var(--err); } .warn { color:var(--warn); }
   .status { font-size:13px; color:var(--muted); margin-top:6px; }
   h2 { margin:0 0 16px; }
-  .modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:10; }
+  .modal { position:fixed; inset:0; background:rgba(15,25,35,.35); display:flex; align-items:center; justify-content:center; z-index:10; }
   .modal-box { background:var(--card); width:min(90vw,420px); padding:24px; border-radius:20px; text-align:center; }
   .key-line { background:var(--key); border-radius:12px; padding:14px; margin:10px 0; font-size:26px; font-weight:700; word-break:break-all; }
   .key-who { font-size:18px; margin-bottom:6px; }
@@ -54,6 +54,7 @@
 
 <!-- 裝置啟用 -->
 <div class="card" id="setup" hidden>
+  <div class="store" id="setupStore"></div>
   <h2>裝置啟用</h2>
   <p class="status">請輸入管理者提供的裝置碼(每個裝置碼只能啟用一次)</p>
   <input id="devCode" autocomplete="off" autocapitalize="characters" placeholder="裝置碼">
@@ -89,7 +90,7 @@
 
 <script>
 /* ======== 設定:換成 Apps Script 部署網址(/exec 結尾) ======== */
-const API_URL = 'https://script.google.com/macros/s/請貼上部署ID/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzsaqOyM1AWEccwy8b0r9muqijr_kYbfMavOwqaB__oZqditDkpEPooq4iGQrk9D-BfrA/exec';
 const DUP_MIN = 3;               // 本機防連按
 const REFRESH_MS = 60 * 60000;   // 每小時向後端更新一次名單與班表(只讀打卡試算表,不碰排班表)
 const FLUSH_MS = 30000;          // 每 30 秒嘗試上傳離線紀錄
@@ -103,12 +104,14 @@ const LS = {
 const st = {
   deviceKey: LS.get('deviceKey', null),
   store: LS.get('store', ''),
+  storeLabel: LS.get('storeLabel', ''),
   deviceName: LS.get('deviceName', ''),
   employees: LS.get('employees', {}),
   schedule: LS.get('schedule', []),
   lastSync: LS.get('lastSync', null)
 };
 
+const URL_STORE = new URLSearchParams(location.search).get('s') || '';   // 分店網址 ?s=中友
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
 const dateStr = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -131,15 +134,21 @@ function showSetup(msg) {
   $('main').hidden = true; $('setup').hidden = false;
   $('devMsg').textContent = msg || ''; $('devMsg').className = 'msg err';
   $('devCode').focus();
+  $('setupStore').textContent = URL_STORE;
+  if (URL_STORE) api({ action: 'storeInfo', store: URL_STORE })
+    .then(r => { if (r.ok) $('setupStore').textContent = r.storeLabel; }).catch(() => {});
 }
 function showMain() {
   $('setup').hidden = true; $('main').hidden = false;
-  $('storeName').textContent = st.store + ' 打卡';
-  $('deviceName').textContent = st.deviceName;
+  setTitle();
   resetInput(); updateStatus();
 }
+function setTitle() {
+  $('storeName').textContent = (st.storeLabel || st.store) + ' 打卡';
+  $('deviceName').textContent = st.deviceName;
+}
 function clearDevice(msg) {
-  ['deviceKey', 'store', 'deviceName', 'employees', 'schedule', 'lastSync'].forEach(k => LS.del(k));
+  ['deviceKey', 'store', 'storeLabel', 'deviceName', 'employees', 'schedule', 'lastSync'].forEach(k => LS.del(k));
   st.deviceKey = null; st.employees = {}; st.schedule = [];
   showSetup(msg);
 }
@@ -150,10 +159,10 @@ $('devBtn').addEventListener('click', async () => {
   if (!code) return;
   $('devBtn').disabled = true; $('devMsg').textContent = '啟用中…'; $('devMsg').className = 'msg';
   try {
-    const r = await api({ action: 'activate', deviceCode: code });
+    const r = await api({ action: 'activate', deviceCode: code, store: URL_STORE });
     if (!r.ok) { $('devMsg').textContent = r.msg; $('devMsg').className = 'msg err'; return; }
-    st.deviceKey = r.deviceKey; st.store = r.store; st.deviceName = r.deviceName;
-    LS.set('deviceKey', r.deviceKey); LS.set('store', r.store); LS.set('deviceName', r.deviceName);
+    st.deviceKey = r.deviceKey; st.store = r.store; st.storeLabel = r.storeLabel; st.deviceName = r.deviceName;
+    LS.set('deviceKey', r.deviceKey); LS.set('store', r.store); LS.set('storeLabel', r.storeLabel); LS.set('deviceName', r.deviceName);
     await refresh();
     showMain();
   } catch (e) {
@@ -168,11 +177,13 @@ async function refresh() {
     const r = await api({ action: 'bootstrap', deviceKey: st.deviceKey });
     if (r.auth === false) { clearDevice(r.msg); return; }
     if (!r.ok) return;
-    st.employees = r.employees; st.schedule = r.schedule; st.store = r.store; st.deviceName = r.deviceName;
+    st.employees = r.employees; st.schedule = r.schedule; st.store = r.store;
+    st.storeLabel = r.storeLabel || r.store; st.deviceName = r.deviceName;
+    LS.set('storeLabel', st.storeLabel);
     st.lastSync = Date.now();
     LS.set('employees', r.employees); LS.set('schedule', r.schedule);
     LS.set('store', r.store); LS.set('deviceName', r.deviceName); LS.set('lastSync', st.lastSync);
-    $('storeName').textContent = st.store + ' 打卡'; $('deviceName').textContent = st.deviceName;
+    setTitle();
   } catch (e) { /* 離線,沿用本機資料 */ }
   updateStatus();
 }
