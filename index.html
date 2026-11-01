@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3864">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>真田打卡</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1d1d1f; --muted:#6b7280; --accent:#1f3864;
+          --ok:#16a34a; --err:#dc2626; --warn:#b45309; --line:#d1d5db; --key:#fff7d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111317; --card:#1c1f26; --text:#f3f4f6; --muted:#9ca3af; --accent:#5b8def;
+            --ok:#22c55e; --err:#f87171; --warn:#fbbf24; --line:#374151; --key:#3a3215; }
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+         display:flex; align-items:center; justify-content:center;
+         padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0); }
+  .card { background:var(--card); width:min(92vw,440px); padding:26px 22px; border-radius:20px;
+          box-shadow:0 6px 24px rgba(0,0,0,.12); text-align:center; }
+  [hidden] { display:none !important; }
+  .store { font-size:22px; font-weight:700; }
+  .device { font-size:13px; color:var(--muted); margin-top:2px; }
+  .clock { font-size:46px; font-weight:700; letter-spacing:2px; margin:6px 0 16px; font-variant-numeric:tabular-nums; }
+  input { font-size:22px; padding:12px; border:3px solid var(--line); border-radius:14px;
+          background:var(--bg); color:var(--text); outline:none; text-align:center; width:100%; }
+  input:focus { border-color:var(--accent); }
+  #code { width:120px; height:120px; font-size:72px; padding:0; text-transform:uppercase; }
+  .name { height:40px; margin:14px 0; font-size:28px; font-weight:700; }
+  .name.err { color:var(--err); font-size:20px; }
+  button { width:100%; height:70px; font-size:28px; font-weight:700; border:0; border-radius:16px;
+           background:var(--accent); color:#fff; }
+  button:disabled { opacity:.35; }
+  .msg { min-height:52px; margin-top:14px; font-size:19px; font-weight:700; }
+  .ok { color:var(--ok); } .err { color:var(--err); } .warn { color:var(--warn); }
+  .status { font-size:13px; color:var(--muted); margin-top:6px; }
+  h2 { margin:0 0 16px; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:10; }
+  .modal-box { background:var(--card); width:min(90vw,420px); padding:24px; border-radius:20px; text-align:center; }
+  .key-line { background:var(--key); border-radius:12px; padding:14px; margin:10px 0; font-size:26px; font-weight:700; word-break:break-all; }
+  .key-who { font-size:18px; margin-bottom:6px; }
+</style>
+</head>
+<body>
+
+<!-- 裝置啟用 -->
+<div class="card" id="setup" hidden>
+  <h2>裝置啟用</h2>
+  <p class="status">請輸入管理者提供的裝置碼(每個裝置碼只能啟用一次)</p>
+  <input id="devCode" autocomplete="off" autocapitalize="characters" placeholder="裝置碼">
+  <div style="height:14px"></div>
+  <button id="devBtn">啟用</button>
+  <div class="msg" id="devMsg"></div>
+</div>
+
+<!-- 打卡 -->
+<div class="card" id="main" hidden>
+  <div class="store" id="storeName"></div>
+  <div class="device" id="deviceName"></div>
+  <div class="clock" id="clock">--:--</div>
+  <input id="code" maxlength="1" autocomplete="off" autocapitalize="characters" inputmode="text">
+  <div class="name" id="name"></div>
+  <button id="btn" disabled>打卡</button>
+  <div class="msg" id="msg"></div>
+  <div class="status" id="status"></div>
+</div>
+
+<!-- 鑰匙異動 -->
+<div class="modal" id="keyModal" hidden>
+  <div class="modal-box">
+    <div class="key-who" id="keyWho"></div>
+    <h2>🔑 鑰匙異動</h2>
+    <div id="keyLines"></div>
+    <div style="height:10px"></div>
+    <button id="keyOk">知道了</button>
+  </div>
+</div>
+
+<script>
+/* ======== 設定:換成 Apps Script 部署網址(/exec 結尾) ======== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbzsaqOyM1AWEccwy8b0r9muqijr_kYbfMavOwqaB__oZqditDkpEPooq4iGQrk9D-BfrA/exec';
+const DUP_MIN = 3;               // 本機防連按
+const REFRESH_MS = 60 * 60000;   // 每小時向後端更新一次名單與班表(只讀打卡試算表,不碰排班表)
+const FLUSH_MS = 30000;          // 每 30 秒嘗試上傳離線紀錄
+
+/* ======== 本機儲存 ======== */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+const st = {
+  deviceKey: LS.get('deviceKey', null),
+  store: LS.get('store', ''),
+  deviceName: LS.get('deviceName', ''),
+  employees: LS.get('employees', {}),
+  schedule: LS.get('schedule', []),
+  lastSync: LS.get('lastSync', null)
+};
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const dateStr = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const hm = d => pad(d.getHours()) + ':' + pad(d.getMinutes());
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+  : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+async function api(payload, timeoutMs = 10000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    // 不設 Content-Type,避免跨網域預檢,Apps Script 才收得到
+    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload), signal: ctrl.signal });
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+/* ======== 畫面切換 ======== */
+function showSetup(msg) {
+  $('main').hidden = true; $('setup').hidden = false;
+  $('devMsg').textContent = msg || ''; $('devMsg').className = 'msg err';
+  $('devCode').focus();
+}
+function showMain() {
+  $('setup').hidden = true; $('main').hidden = false;
+  $('storeName').textContent = st.store + ' 打卡';
+  $('deviceName').textContent = st.deviceName;
+  resetInput(); updateStatus();
+}
+function clearDevice(msg) {
+  ['deviceKey', 'store', 'deviceName', 'employees', 'schedule', 'lastSync'].forEach(k => LS.del(k));
+  st.deviceKey = null; st.employees = {}; st.schedule = [];
+  showSetup(msg);
+}
+
+/* ======== 裝置啟用 ======== */
+$('devBtn').addEventListener('click', async () => {
+  const code = $('devCode').value.trim();
+  if (!code) return;
+  $('devBtn').disabled = true; $('devMsg').textContent = '啟用中…'; $('devMsg').className = 'msg';
+  try {
+    const r = await api({ action: 'activate', deviceCode: code });
+    if (!r.ok) { $('devMsg').textContent = r.msg; $('devMsg').className = 'msg err'; return; }
+    st.deviceKey = r.deviceKey; st.store = r.store; st.deviceName = r.deviceName;
+    LS.set('deviceKey', r.deviceKey); LS.set('store', r.store); LS.set('deviceName', r.deviceName);
+    await refresh();
+    showMain();
+  } catch (e) {
+    $('devMsg').textContent = '無法連線,啟用需要網路'; $('devMsg').className = 'msg err';
+  } finally { $('devBtn').disabled = false; }
+});
+
+/* ======== 更新名單與班表 ======== */
+async function refresh() {
+  if (!st.deviceKey) return;
+  try {
+    const r = await api({ action: 'bootstrap', deviceKey: st.deviceKey });
+    if (r.auth === false) { clearDevice(r.msg); return; }
+    if (!r.ok) return;
+    st.employees = r.employees; st.schedule = r.schedule; st.store = r.store; st.deviceName = r.deviceName;
+    st.lastSync = Date.now();
+    LS.set('employees', r.employees); LS.set('schedule', r.schedule);
+    LS.set('store', r.store); LS.set('deviceName', r.deviceName); LS.set('lastSync', st.lastSync);
+    $('storeName').textContent = st.store + ' 打卡'; $('deviceName').textContent = st.deviceName;
+  } catch (e) { /* 離線,沿用本機資料 */ }
+  updateStatus();
+}
+
+/* ======== 本機打卡紀錄(離線時判斷今天第幾次) ======== */
+function localLog() {
+  const log = LS.get('log', {}), today = dateStr(new Date());
+  Object.keys(log).forEach(d => { if (d !== today) delete log[d]; });
+  log[today] = log[today] || {};
+  return log;
+}
+function addLocal(code, time) {
+  const log = localLog(), today = dateStr(new Date());
+  (log[today][code] = log[today][code] || []).push(time.getTime());
+  LS.set('log', log);
+  return log[today][code].length;
+}
+function lastLocal(code) {
+  const arr = (localLog()[dateStr(new Date())][code]) || [];
+  return arr.length ? new Date(arr[arr.length - 1]) : null;
+}
+
+/* ======== 打卡 ======== */
+function resetInput() {
+  $('code').value = ''; $('name').textContent = ''; $('name').className = 'name';
+  $('btn').disabled = true; $('btn').textContent = '打卡';
+  if ($('keyModal').hidden) $('code').focus();
+}
+
+$('code').addEventListener('input', () => {
+  const c = $('code').value.trim().toUpperCase();
+  $('code').value = c; $('msg').textContent = '';
+  if (!c) { resetInput(); return; }
+  if (st.employees[c]) { $('name').textContent = st.employees[c]; $('name').className = 'name'; $('btn').disabled = false; }
+  else { $('name').textContent = '查無此代碼'; $('name').className = 'name err'; $('btn').disabled = true; }
+});
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter' && !$('btn').disabled) doPunch(); });
+$('btn').addEventListener('click', doPunch);
+
+let msgTimer = null;
+function showMsg(text, cls) {
+  clearTimeout(msgTimer);
+  $('msg').textContent = text; $('msg').className = 'msg ' + cls;
+  msgTimer = setTimeout(() => { $('msg').textContent = ''; }, 7000);
+}
+
+async function doPunch() {
+  const code = $('code').value.trim().toUpperCase();
+  const name = st.employees[code];
+  if (!name) return;
+  const last = lastLocal(code);
+  if (last && (Date.now() - last) / 60000 < DUP_MIN) {
+    showMsg(`${name} 已在 ${hm(last)} 打過卡`, 'warn'); resetInput(); return;
+  }
+  $('btn').disabled = true; $('btn').textContent = '送出中…';
+  const p = { clientId: uuid(), code, clientTime: new Date().toISOString() };
+
+  let r = null;
+  try { r = await api({ action: 'punch', deviceKey: st.deviceKey, offline: false, ...p }, 8000); }
+  catch (e) { r = null; }
+
+  if (r && r.auth === false) { clearDevice(r.msg); return; }
+
+  if (r && r.ok) {
+    addLocal(code, new Date());
+    showMsg(`✅ ${r.name} ${r.time} 打卡成功(今天第 ${r.count} 次)`, 'ok');
+    if (r.count === 1) showKeys(code, name);
+  } else if (r && !r.ok) {
+    showMsg('⚠️ ' + r.msg, 'err');
+  } else {
+    // 無法連線 → 暫存,恢復網路後補傳
+    const q = LS.get('queue', []); q.push(p); LS.set('queue', q);
+    const count = addLocal(code, new Date(p.clientTime));
+    showMsg(`📥 ${name} ${hm(new Date(p.clientTime))} 已暫存(離線),恢復網路後自動上傳`, 'warn');
+    if (count === 1) showKeys(code, name);
+  }
+  resetInput(); updateStatus();
+}
+
+/* ======== 鑰匙異動 ======== */
+function showKeys(code, name) {
+  const s = st.schedule.find(x => x.date === dateStr(new Date()));
+  if (!s) return;
+  const isE = s.early && s.early.code === code;
+  const isL = s.late && s.late.code === code;
+  const lines = [];
+  if (isE && s.keyEarly) lines.push([isL ? '早班' : '', s.keyEarly]);
+  if (isL && s.keyLate) lines.push([isE ? '晚班' : '', s.keyLate]);
+  if (!lines.length) return;
+  $('keyWho').textContent = name;
+  $('keyLines').innerHTML = '';
+  lines.forEach(([label, text]) => {
+    const div = document.createElement('div');
+    div.className = 'key-line';
+    div.textContent = (label ? label + ':' : '') + text;
+    $('keyLines').appendChild(div);
+  });
+  $('keyModal').hidden = false;
+}
+$('keyOk').addEventListener('click', () => { $('keyModal').hidden = true; $('code').focus(); });
+
+/* ======== 離線紀錄補傳 ======== */
+let flushing = false;
+async function flush() {
+  if (flushing || !st.deviceKey) return;
+  const q = LS.get('queue', []);
+  if (!q.length) return;
+  flushing = true;
+  try {
+    while (q.length) {
+      let r;
+      try { r = await api({ action: 'punch', deviceKey: st.deviceKey, offline: true, ...q[0] }, 10000); }
+      catch (e) { break; }
+      if (!r || r.auth === false) break;
+      q.shift(); LS.set('queue', q);   // 成功或被伺服器拒絕(例如代碼已停用)都移出佇列
+    }
+  } finally { flushing = false; updateStatus(); }
+}
+
+function updateStatus() {
+  const n = LS.get('queue', []).length;
+  const sync = st.lastSync ? '資料更新 ' + hm(new Date(st.lastSync)) : '尚未取得資料';
+  $('status').textContent = n ? `⚠️ 有 ${n} 筆離線打卡等待上傳 · ${sync}` : `● ${sync}`;
+  $('status').className = 'status' + (n ? ' warn' : '');
+}
+
+/* ======== 啟動 ======== */
+function tick() { $('clock').textContent = hm(new Date()); }
+tick(); setInterval(tick, 5000);
+
+if (!st.deviceKey) showSetup();
+else { showMain(); refresh().then(flush); }
+
+setInterval(refresh, REFRESH_MS);
+setInterval(flush, FLUSH_MS);
+window.addEventListener('online', () => { refresh().then(flush); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh().then(flush); } });
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
