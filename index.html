@@ -250,7 +250,7 @@ async function doPunch() {
   if (r && r.ok) {
     addLocal(code, new Date());
     showMsg(`✅ ${r.name} ${r.time} 打卡成功(今天第 ${r.count} 次)`, 'ok');
-    if (r.count === 1) showKeys(code, name);
+    showKeys(code, name);
   } else if (r && !r.ok) {
     showMsg('⚠️ ' + r.msg, 'err');
   } else {
@@ -258,7 +258,7 @@ async function doPunch() {
     const q = LS.get('queue', []); q.push(p); LS.set('queue', q);
     const count = addLocal(code, new Date(p.clientTime));
     showMsg(`📥 ${name} ${hm(new Date(p.clientTime))} 已暫存(離線),恢復網路後自動上傳`, 'warn');
-    if (count === 1) showKeys(code, name);
+    showKeys(code, name);
   }
   resetInput(); updateStatus();
 }
