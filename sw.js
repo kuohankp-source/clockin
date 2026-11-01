@@ -1,5 +1,5 @@
 // 離線快取:網頁本身存在裝置上,斷網也能打開。改版時把版本號 +1。
-const CACHE = 'punch-v1';
+const CACHE = 'punch-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

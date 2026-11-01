@@ -20,6 +20,8 @@
          font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
          display:flex; align-items:center; justify-content:center;
          padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0); }
+  .wrap { display:flex; flex-direction:column; align-items:center; gap:18px; padding:16px 0; }
+  .logo { max-width:min(60vw,260px); max-height:110px; object-fit:contain; }
   .card { background:var(--card); width:min(92vw,440px); padding:26px 22px; border-radius:20px;
           box-shadow:0 6px 24px rgba(0,0,0,.12); text-align:center; }
   [hidden] { display:none !important; }
@@ -46,6 +48,9 @@
 </style>
 </head>
 <body>
+<div class="wrap">
+<!-- 店家 LOGO:把 logo.png 上傳到 repository 最外層即可顯示;沒有檔案時自動隱藏 -->
+<img class="logo" src="logo.png" alt="真田騎士用品" onerror="this.hidden=true">
 
 <!-- 裝置啟用 -->
 <div class="card" id="setup" hidden>
@@ -69,6 +74,8 @@
   <div class="status" id="status"></div>
 </div>
 
+</div>
+
 <!-- 鑰匙異動 -->
 <div class="modal" id="keyModal" hidden>
   <div class="modal-box">
@@ -82,7 +89,7 @@
 
 <script>
 /* ======== 設定:換成 Apps Script 部署網址(/exec 結尾) ======== */
-const API_URL = 'https://script.google.com/macros/s/AKfycbzsaqOyM1AWEccwy8b0r9muqijr_kYbfMavOwqaB__oZqditDkpEPooq4iGQrk9D-BfrA/exec';
+const API_URL = 'https://script.google.com/macros/s/請貼上部署ID/exec';
 const DUP_MIN = 3;               // 本機防連按
 const REFRESH_MS = 60 * 60000;   // 每小時向後端更新一次名單與班表(只讀打卡試算表,不碰排班表)
 const FLUSH_MS = 30000;          // 每 30 秒嘗試上傳離線紀錄
@@ -285,9 +292,15 @@ async function flush() {
   } finally { flushing = false; updateStatus(); }
 }
 
+function todayScheduleText() {
+  const s = st.schedule.find(x => x.date === dateStr(new Date()));
+  if (!s) return '今日班表:無資料';
+  const nm = p => !p || !p.name ? '—' : (p.code ? p.name : p.name + '(未對應代碼)');
+  return `今日班表:早 ${nm(s.early)} / 晚 ${nm(s.late)}`;
+}
 function updateStatus() {
   const n = LS.get('queue', []).length;
-  const sync = st.lastSync ? '資料更新 ' + hm(new Date(st.lastSync)) : '尚未取得資料';
+  const sync = (st.lastSync ? '資料更新 ' + hm(new Date(st.lastSync)) : '尚未取得資料') + ' · ' + todayScheduleText();
   $('status').textContent = n ? `⚠️ 有 ${n} 筆離線打卡等待上傳 · ${sync}` : `● ${sync}`;
   $('status').className = 'status' + (n ? ' warn' : '');
 }
@@ -301,6 +314,7 @@ else { showMain(); refresh().then(flush); }
 
 setInterval(refresh, REFRESH_MS);
 setInterval(flush, FLUSH_MS);
+$('status').addEventListener('click', () => { $('status').textContent = '更新中…'; refresh(); });
 window.addEventListener('online', () => { refresh().then(flush); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh().then(flush); } });
 
