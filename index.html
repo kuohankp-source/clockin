@@ -27,6 +27,7 @@
   [hidden] { display:none !important; }
   .store { font-size:22px; font-weight:700; color:var(--accent); }
   .device { font-size:13px; color:var(--muted); margin-top:2px; }
+  .date { font-size:18px; color:var(--muted); margin-top:10px; }
   .clock { font-size:46px; font-weight:600; letter-spacing:2px; margin:6px 0 16px; font-variant-numeric:tabular-nums; color:var(--text); }
   input { font-size:22px; padding:12px; border:2px solid var(--line); border-radius:16px;
           background:var(--field); color:var(--text); outline:none; text-align:center; width:100%; }
@@ -67,7 +68,8 @@
 <div class="card" id="main" hidden>
   <div class="store" id="storeName"></div>
   <div class="device" id="deviceName"></div>
-  <div class="clock" id="clock">--:--</div>
+  <div class="date" id="date"></div>
+  <div class="clock" id="clock">--:--:--</div>
   <input id="code" maxlength="1" autocomplete="off" autocapitalize="characters" inputmode="text">
   <div class="name" id="name"></div>
   <button id="btn" disabled>打卡</button>
@@ -317,8 +319,12 @@ function updateStatus() {
 }
 
 /* ======== 啟動 ======== */
-function tick() { $('clock').textContent = hm(new Date()); }
-tick(); setInterval(tick, 5000);
+function tick() {
+  const d = new Date();
+  $('date').textContent = (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
+  $('clock').textContent = hm(d) + ':' + pad(d.getSeconds());
+}
+tick(); setInterval(tick, 1000);
 
 if (!st.deviceKey) showSetup();
 else { showMain(); refresh().then(flush); }
